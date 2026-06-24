@@ -144,7 +144,7 @@ void MotorInit(void)
 
 	PID_Init_Pos(&Joint[0], 30.0f, 0.0f, 0.0f, 100.0f, 5.0f); // 位置pid//云台
 	PID_Init_Vel(&Joint[0], 8.0f, 0.8f, 0.0f, 50.0f, 20.0f); // 速度pid3.6   3.2
-	RS_Offest_inv(&Joint[0], 1, 5.95701265f);				 // 方向和偏移值   //
+	RS_Offest_inv(&Joint[0], 1, 2.26959395f);				 // 方向和偏移值   //
 
 	PID_Init_Pos(&Joint[1], 5.0f, 0.0f, 2.0f, 100.0f, 4.0f); // 大臂  //p d50
 	PID_Init_Vel(&Joint[1], 15.0f, 0.1f, 0.0f, 100.0f, 30.0f);         //p9.0

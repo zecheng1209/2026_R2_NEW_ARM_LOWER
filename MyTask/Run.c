@@ -17,8 +17,8 @@ void Motor_Drive(void *param)
 	for (;;)
 	{
     // 吸盘开关使能
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, sttb);
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, sttb);
+//		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, sttb);
+//		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, sttb);
 
 		for (uint8_t i = 0; i < 5; i++)
 		{
@@ -26,7 +26,7 @@ void Motor_Drive(void *param)
 			PID_Control(Joint[i].Rs_motor.state.omega, Joint[i].pos_pid.pid_out + Joint[i].exp_omega, &Joint[i].vel_pid);
 			RobStrideMotionControl(&Joint[i].Rs_motor,Joint[i].Rs_motor.motor_id , ((Joint[i].vel_pid.pid_out * enable_Joint[i])+ (Joint[i].exp_torque*enable_feedforward[i])), 0, 0, 0,0);
 //			if(i==1||i==3||i==4)
-//			vTaskDelay(1);
+//			vTaskDelay(2);
 		}
 		vTaskDelayUntil(&Last_wake_time, pdMS_TO_TICKS(1));
 	}
@@ -99,10 +99,49 @@ void MotorRecTask(void *param) // 从PC接收电机数据
 
 	for (;;)
 	{
+		
+		/*================== 气泵、电磁阀控制 ==================*/
+      static uint8_t last_airpump = 0;
+      static uint8_t valve_timing = 0;
+      static TickType_t valve_start_tick = 0;
+			sttb = armtarget_t.air_pump;
+
+			if (sttb == 0)
+			{
+        /* 气泵关闭 */
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET);
+
+        /* 从1变0时，启动电磁阀3秒 */
+        if ((last_airpump == 1) && (valve_timing == 0))
+        {
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
+            valve_start_tick = xTaskGetTickCount();
+            valve_timing = 1;
+						last_airpump = 0;
+        }
+        if (valve_timing &&
+            (xTaskGetTickCount() - valve_start_tick >= pdMS_TO_TICKS(3000)))
+        {
+            /* 电磁阀关闭 */
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET);
+            valve_timing = 0;
+        }
+			}
+			else
+			{
+        /* 气泵打开 */
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET);
+
+        /* 电磁阀关闭 */
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET);
+
+        valve_timing = 0;
+				last_airpump = 1;
+			}	  
+
 		if (xSemaphoreTake(cdc_recv_semphr, pdMS_TO_TICKS(200)) == pdTRUE)
 		{
 			count++;
-			sttb = armtarget_t.air_pump;
 			Joint[0].exp_rad = armtarget_t.joints[0].rad* Joint[0].inv_motor;
 			Joint[0].exp_omega = armtarget_t.joints[0].omega* Joint[0].inv_motor;
 			Joint[0].exp_torque = armtarget_t.joints[0].torque* Joint[0].inv_motor;
