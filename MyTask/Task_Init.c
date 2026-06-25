@@ -159,7 +159,7 @@ void MotorInit(void)
 	RS_Offest_inv(&Joint[3], 1, -0.010738194f);        //上5.51 下1.71  
 
 	PID_Init_Pos(&Joint[4], 60.0f, 0.0f, 0.0f, 0.0f, 30.0f); // 末端
-	PID_Init_Vel(&Joint[4], 3.0f, 0.3f, 0.0f, 10.0f, 8.0f);
+	PID_Init_Vel(&Joint[4], 3.0f, 0.3f, 0.0f, 10.0f, 2.0f);
 	RS_Offest_inv(&Joint[4], 1, 5.37676668f);        //左6.03  右4.78
 
 	vTaskDelay(100);
