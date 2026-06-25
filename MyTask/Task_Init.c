@@ -159,12 +159,12 @@ void MotorInit(void)
 	RS_Offest_inv(&Joint[3], 1, -0.010738194f);        //上5.51 下1.71  
 
 	PID_Init_Pos(&Joint[4], 60.0f, 0.0f, 0.0f, 0.0f, 30.0f); // 末端
-	PID_Init_Vel(&Joint[4], 3.0f, 0.3f, 0.0f, 10.0f, 2.0f);
+	PID_Init_Vel(&Joint[4], 3.0f, 0.3f, 0.0f, 10.0f, 2.0f);  //不宜给过大，容易电压过低然后电机无输出力矩
 	RS_Offest_inv(&Joint[4], 1, 5.37676668f);        //左6.03  右4.78
 
 	vTaskDelay(100);
 	RobStrideInit(&Joint[0].Rs_motor, &hcan1, 0x01, RobStride_06);	 // 云台
-	RobStrideInit(&Joint[1].Rs_motor, &hcan1, 0x02, RobStride_03);	 // 0大臂
+	RobStrideInit(&Joint[1].Rs_motor, &hcan1, 0x02, RobStride_03);	 // 大臂
 	RobStrideInit(&Joint[2].Rs_motor, &hcan2, 0x03, RobStride_01);	 // 小臂
 	RobStrideInit(&Joint[3].Rs_motor, &hcan2, 0x04, RobStride_02);	 // 末端
 	RobStrideInit(&Joint[4].Rs_motor, &hcan2, 0x05, RobStride_EL05); // 末端
