@@ -155,8 +155,8 @@ typedef struct {
 
 ## 作者
 
-- 作者：yao 等
-- 日期：2020 - 2026
+- 作者：Trick Immortal 等
+- 日期：2025 - 2026
 
 ## 许可证
 
