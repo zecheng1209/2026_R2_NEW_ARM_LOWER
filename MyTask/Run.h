@@ -53,6 +53,16 @@ typedef struct{
 #pragma pack()
 
 
+/* 欠压恢复状态机 */
+typedef enum {
+    UV_IDLE = 0,        // 正常运行
+    UV_DISABLE_WAIT,    // 已发送 Disable，等待 10ms
+    UV_SETMODE_WAIT,    // 已发送 SetMode，等待 10ms
+    UV_ENABLE_RETRY,    // Enable 重试中，最多 3 次
+    UV_WAIT_CLEAR,      // Enable 重试耗尽，被动等待 error 清零
+    UV_TIMEOUT,         // 超时未恢复，需外部干预
+} UndervoltageState_t;
+
 typedef struct{
     RobStride_t   Rs_motor;
     float pos_offset;
@@ -64,6 +74,12 @@ typedef struct{
 
     PID pos_pid;     // 位置环PID
     PID vel_pid;     // 速度环PID
+
+    // 欠压恢复状态机
+    UndervoltageState_t uv_state;           // 当前状态
+    uint32_t            uv_tick;            // 状态进入时刻 (FreeRTOS tick)
+    uint8_t             uv_retry_cnt;       // Enable 重试计数
+    uint32_t            uv_recovery_count;  // 欠压重使能累计次数
 }Joint_t;
 
 

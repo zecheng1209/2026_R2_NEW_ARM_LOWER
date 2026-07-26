@@ -55,7 +55,7 @@ void Task_Init(void)
 	
   MotorInit();
 	/////重置角度
-	//RobStrideResetAngle(&Joint[1].Rs_motor);
+	//RobStrideResetAngle(&Joint[3].Rs_motor);
 	
 	//IR_Init(&hcan2,(uint8_t[]){0x10,0x11,0x12},3);
 	xTaskCreate(Motor_Drive, "Motor_Drive", 628, NULL, 4, &Motor_Drive_Handle);		  // 驱动
@@ -98,12 +98,11 @@ void Motor_reset(void *param)// 复位电机
 	Joint[4].exp_rad = Motor_Init[4] - Joint[4].pos_offset;
 	for (;;)
 	{
-		RampToTarget(&Joint[0].exp_rad, 0, 0.001f);
-		RampToTarget(&Joint[1].exp_rad, 0, 0.001f);
-		RampToTarget(&Joint[2].exp_rad, 0, 0.0012f);
-		RampToTarget(&Joint[3].exp_rad, 0, 0.001f);
-		RampToTarget(&Joint[4].exp_rad, 0, 0.001f);
-
+		RampToTarget(&Joint[0].exp_rad, 0, 0.001f);//0.001
+		RampToTarget(&Joint[1].exp_rad, 0, 0.001f);//0.001
+		RampToTarget(&Joint[2].exp_rad, 0, 0.0012f);//0.0012
+		RampToTarget(&Joint[3].exp_rad, 0, 0.001f);//0.001
+		RampToTarget(&Joint[4].exp_rad, 0, 0.001f);//0.001
 		if (Joint_FinInit())
 		{
 			xTaskCreate(MotorRecTask, "MotorRecTask", 200, NULL, 4, &MotorRecTask_Handle);   //PC接收数据
@@ -143,32 +142,56 @@ void MotorInit(void)
 	vTaskDelay(2000);
 
 	PID_Init_Pos(&Joint[0], 30.0f, 0.0f, 0.0f, 100.0f, 5.0f); // 位置pid//云台
-	PID_Init_Vel(&Joint[0], 8.0f, 0.8f, 0.0f, 50.0f, 20.0f); // 速度pid3.6   3.2
-	RS_Offest_inv(&Joint[0], 1, 5.95701265f);				 // 方向和偏移值   //
+	PID_Init_Vel(&Joint[0], 6.0f, 0.4f, 0.0f, 50.0f, 20.0f); // 速度pid3.6   3.2
+	RS_Offest_inv(&Joint[0], 1, 5.85308266f);				 // 方向和偏移值   //
 
-	PID_Init_Pos(&Joint[1], 5.0f, 0.0f, 2.0f, 100.0f, 4.0f); // 大臂  //p d50
-	PID_Init_Vel(&Joint[1], 15.0f, 0.1f, 0.0f, 100.0f, 30.0f);         //p9.0
-	RS_Offest_inv(&Joint[1], 1, 1.1826614f);             //1.1826614
+	PID_Init_Pos(&Joint[1], 7.0f, 0.0f, 2.0f, 100.0f, 4.0f); // 大臂  //p d50
+	PID_Init_Vel(&Joint[1], 15.0f, 0.08f, 0.0f, 100.0f, 30.0f);         //p9.0
+	RS_Offest_inv(&Joint[1], 1, 5.47432165f);             //1.1826614
 
 	PID_Init_Pos(&Joint[2], 5.0,0.0f,0.0f, 500.0f, 2.5f); // 小臂
 	PID_Init_Vel(&Joint[2], 2.7f, 0.1f, 0.0f, 70.0f, 15.0f); //2.8 0.002
-	RS_Offest_inv(&Joint[2], -1, 2.13690066f);       //上
+	RS_Offest_inv(&Joint[2], -1, 4.84024096f);       //上
 
-	PID_Init_Pos(&Joint[3], 60.0f, 0.0f, 0.0f, 20.0f, 20.0f); // 手腕  
-	PID_Init_Vel(&Joint[3], 3.5f, 0.8f, 0.0f, 20.0f, 15.0f);
-	RS_Offest_inv(&Joint[3], 1, -0.010738194f);        //上5.51 下1.71  
+	PID_Init_Pos(&Joint[3], 55.0f, 0.0f, 0.0f, 20.0f, 20.0f); // 手腕  
+	PID_Init_Vel(&Joint[3], 3.1f, 0.5f, 0.0f, 20.0f, 10.0f);  //3.3  0.6
+	RS_Offest_inv(&Joint[3], 1, -0.0210928805f);        //上5.51 下1.71  
 
 	PID_Init_Pos(&Joint[4], 60.0f, 0.0f, 0.0f, 0.0f, 30.0f); // 末端
-	PID_Init_Vel(&Joint[4], 3.0f, 0.3f, 0.0f, 10.0f, 8.0f);
-	RS_Offest_inv(&Joint[4], 1, 5.37676668f);        //左6.03  右4.78
+	PID_Init_Vel(&Joint[4], 3.0f, 0.3f, 0.0f, 10.0f, 2.0f);
+	RS_Offest_inv(&Joint[4], 1, 3.28051805f);        //左6.03  右4.78
 
 	vTaskDelay(100);
-	RobStrideInit(&Joint[0].Rs_motor, &hcan1, 0x01, RobStride_06);	 // 云台
-	RobStrideInit(&Joint[1].Rs_motor, &hcan1, 0x02, RobStride_03);	 // 0大臂
-	RobStrideInit(&Joint[2].Rs_motor, &hcan2, 0x03, RobStride_01);	 // 小臂
-	RobStrideInit(&Joint[3].Rs_motor, &hcan2, 0x04, RobStride_02);	 // 末端
-	RobStrideInit(&Joint[4].Rs_motor, &hcan2, 0x05, RobStride_EL05); // 末端
+	RobStrideInit(&Joint[0].Rs_motor, &hcan2, 0x01, RobStride_06);	 // 云台
+	RobStrideInit(&Joint[1].Rs_motor, &hcan2, 0x02, RobStride_03);	 // 0大臂
+	RobStrideInit(&Joint[2].Rs_motor, &hcan1, 0x03, RobStride_01);	 // 小臂
+	RobStrideInit(&Joint[3].Rs_motor, &hcan1, 0x04, RobStride_02);	 // 末端
+	RobStrideInit(&Joint[4].Rs_motor, &hcan1, 0x05, RobStride_EL05); // 末端
 
+	vTaskDelay(200);
+	//////////两种方式
+//int m;
+//int retry;
+
+//RobStride_t *motor_list[] =
+//{
+//    &Joint[0].Rs_motor,
+//    &Joint[1].Rs_motor,
+//    &Joint[2].Rs_motor,
+//    &Joint[3].Rs_motor,
+//    &Joint[4].Rs_motor,
+//};
+
+//for(m = 0; m < 5; m++)
+//{
+//    for(retry = 0; retry < 5; retry++)
+//    {
+//        RobStrideEnable(motor_list[m]);
+//        vTaskDelay(10);
+//    }
+//}
+  int i;
+	vTaskDelay(200);
 	RobStrideSetMode(&Joint[0].Rs_motor, RobStride_MotionControl);	
 	vTaskDelay(1);
 	RobStrideSetMode(&Joint[1].Rs_motor, RobStride_MotionControl);
@@ -178,16 +201,10 @@ void MotorInit(void)
 	RobStrideSetMode(&Joint[3].Rs_motor, RobStride_MotionControl);
 	vTaskDelay(1);
 	RobStrideSetMode(&Joint[4].Rs_motor, RobStride_MotionControl);
-	vTaskDelay(200);
-	RobStrideEnable(&Joint[0].Rs_motor);
-	vTaskDelay(1);
-	RobStrideEnable(&Joint[1].Rs_motor);
-	vTaskDelay(1);
-	RobStrideEnable(&Joint[2].Rs_motor);
-	vTaskDelay(1);
-	RobStrideEnable(&Joint[3].Rs_motor);
-	vTaskDelay(1);
-	RobStrideEnable(&Joint[4].Rs_motor);
-
+	for(i=0;i<5;i++)
+	{
+   RobStrideEnable(&Joint[i].Rs_motor);
+   vTaskDelay(10);
+	}
 	vTaskDelay(2000);
 }

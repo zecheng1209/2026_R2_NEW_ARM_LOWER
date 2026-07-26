@@ -2,13 +2,112 @@
 #include "usb_trans.h"
 #include "usbd_cdc_if.h"
 #include "infrared_host.h"
+#include <stdbool.h>
+#include <math.h>
 
 extern uint8_t ready;					   // 电机是否就绪标志位
 Joint_t Joint[5];						   // 5个关节
-uint8_t enable_Joint[5] = {1, 1, 1, 1, 1}; // 5个关节的使能标志位  {1, 1, 1, 1, 1};   {0, 0, 0, 0, 0};
+uint8_t enable_Joint[5] =  {1, 1, 1, 1, 1};// 5个关节的使能标志位  {1, 1, 1, 1, 1};   {0, 0, 0, 0, 0};
+//uint8_t enable_Joint[5] =  {0, 0, 0, 0, 0};// 5个关节的使能标志位  {1, 1, 1, 1, 1};   {0, 0, 0, 0, 0};
+
 uint8_t enable_feedforward[5] = {1, 1, 1, 1, 1};	   // 5个关节的前馈使能标志位
 GPIO_PinState sttb=0; 				       // 吸盘开关状态
 TaskHandle_t Motor_Drive_Handle;
+
+/* 欠压恢复状态机：返回 true 表示该关节可正常控制，false 表示恢复中 */
+static bool Undervoltage_Handle(Joint_t *j)//////并不清楚实际运行中是否有效用
+{
+	uint32_t fault = (uint32_t)j->Rs_motor.state.error;
+	uint32_t now   = xTaskGetTickCount();
+
+	switch (j->uv_state)
+	{
+	case UV_IDLE:
+		{
+			float tq_abs = fabsf(j->Rs_motor.state.torque);
+			float pos_err = fabsf(j->Rs_motor.state.rad - (j->exp_rad + j->pos_offset));
+
+			/* 欠压(bit2) 或 力矩为0但位置有偏差(电机可能未真正使能) */
+			if ((fault & 0x04) || (tq_abs < 0.01f && pos_err > 0.1f))
+			{
+				j->uv_recovery_count++;
+				j->pos_pid.error_inter = 0;
+				j->pos_pid.error_now   = 0;
+				j->pos_pid.error_last  = 0;
+				j->vel_pid.error_inter = 0;
+				j->vel_pid.error_now   = 0;
+				j->vel_pid.error_last  = 0;
+				j->exp_rad   = j->Rs_motor.state.rad - j->pos_offset;
+				j->exp_omega = 0;
+				RobStrideDisable(&j->Rs_motor, 1);
+				j->uv_state = UV_DISABLE_WAIT;
+				j->uv_tick  = now;
+			}
+		}
+		break;
+
+	case UV_DISABLE_WAIT:
+		if (now - j->uv_tick >= pdMS_TO_TICKS(10))
+		{
+			RobStrideSetMode(&j->Rs_motor, RobStride_MotionControl);
+			j->uv_state = UV_SETMODE_WAIT;
+			j->uv_tick  = now;
+		}
+		break;
+
+	case UV_SETMODE_WAIT:
+		if (now - j->uv_tick >= pdMS_TO_TICKS(10))
+		{
+			RobStrideEnable(&j->Rs_motor);
+			j->uv_retry_cnt = 1;
+			j->uv_state     = UV_ENABLE_RETRY;
+			j->uv_tick      = now;
+		}
+		break;
+
+	case UV_ENABLE_RETRY:
+		if (!(fault & 0x04))
+		{
+			j->Rs_motor.state.error = 0;
+			j->uv_state = UV_IDLE;
+		}
+		else if (j->uv_retry_cnt >= 3)
+		{
+			j->uv_state = UV_WAIT_CLEAR;
+			j->uv_tick  = now;
+		}
+		else if (now - j->uv_tick >= pdMS_TO_TICKS(5))
+		{
+			RobStrideEnable(&j->Rs_motor);
+			j->uv_retry_cnt++;
+			j->uv_tick = now;
+		}
+		break;
+
+	case UV_WAIT_CLEAR:
+		if (!(fault & 0x04))
+		{
+			j->Rs_motor.state.error = 0;
+			j->uv_state = UV_IDLE;
+		}
+		else if (now - j->uv_tick >= pdMS_TO_TICKS(2000))
+		{
+			j->uv_state = UV_TIMEOUT;
+		}
+		break;
+
+	case UV_TIMEOUT:
+		if (!(fault & 0x04))
+		{
+			j->Rs_motor.state.error = 0;
+			j->uv_state = UV_IDLE;
+		}
+		break;
+	}
+
+	return (j->uv_state == UV_IDLE);
+}
+
 void Motor_Drive(void *param)
 {
 	TickType_t Last_wake_time = xTaskGetTickCount();
@@ -17,16 +116,18 @@ void Motor_Drive(void *param)
 	for (;;)
 	{
     // 吸盘开关使能
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, sttb);
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, sttb);
+//		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, sttb);
+//		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, sttb);
 
 		for (uint8_t i = 0; i < 5; i++)
 		{
+			if (!Undervoltage_Handle(&Joint[i]))
+				continue;
+
 			PID_Control(Joint[i].Rs_motor.state.rad, Joint[i].exp_rad + Joint[i].pos_offset, &Joint[i].pos_pid);
 			PID_Control(Joint[i].Rs_motor.state.omega, Joint[i].pos_pid.pid_out + Joint[i].exp_omega, &Joint[i].vel_pid);
 			RobStrideMotionControl(&Joint[i].Rs_motor,Joint[i].Rs_motor.motor_id , ((Joint[i].vel_pid.pid_out * enable_Joint[i])+ (Joint[i].exp_torque*enable_feedforward[i])), 0, 0, 0,0);
-//			if(i==1||i==3||i==4)
-//			vTaskDelay(1);
+
 		}
 		vTaskDelayUntil(&Last_wake_time, pdMS_TO_TICKS(1));
 	}
@@ -99,10 +200,50 @@ void MotorRecTask(void *param) // 从PC接收电机数据
 
 	for (;;)
 	{
+		
+		/*================== 气泵、电磁阀控制 ==================*/
+      static uint8_t last_airpump = 0;
+      static uint8_t valve_timing = 0;
+      static TickType_t valve_start_tick = 0;
+	  	// 
+			sttb = armtarget_t.air_pump;///
+
+			if (sttb == 0)
+			{
+        /* 气泵关闭 */
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET);
+
+        /* 从1变0时，启动电磁阀3秒 */
+        if ((last_airpump == 1) && (valve_timing == 0))
+        {
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_SET);
+            valve_start_tick = xTaskGetTickCount();
+            valve_timing = 1;
+						last_airpump = 0;
+        }
+        if (valve_timing &&
+            (xTaskGetTickCount() - valve_start_tick >= pdMS_TO_TICKS(3000)))
+        {
+            /* 电磁阀关闭 */
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET);
+            valve_timing = 0;
+        }
+			}
+			else
+			{
+        /* 气泵打开 */
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET);
+
+        /* 电磁阀关闭 */
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET);
+
+        valve_timing = 0;
+				last_airpump = 1;
+			}	  
+
 		if (xSemaphoreTake(cdc_recv_semphr, pdMS_TO_TICKS(200)) == pdTRUE)
 		{
 			count++;
-			sttb = armtarget_t.air_pump;
 			Joint[0].exp_rad = armtarget_t.joints[0].rad* Joint[0].inv_motor;
 			Joint[0].exp_omega = armtarget_t.joints[0].omega* Joint[0].inv_motor;
 			Joint[0].exp_torque = armtarget_t.joints[0].torque* Joint[0].inv_motor;
@@ -136,17 +277,11 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
 	if (hcan->Instance == CAN1)
 	{
-		uint8_t buf[8];
-		uint32_t ID = CAN_Receive_DataFrame(&hcan1, buf);
-		CAN_RxHeaderTypeDef rx_header;
-//		if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &rx_header, buf) == HAL_OK)
-//		{
-//			uint32_t ID = (rx_header.IDE == CAN_ID_STD) ? rx_header.StdId : rx_header.ExtId;
-//			IR_OnCanRx(&rx_header, buf);
-
-		RobStrideRecv_Handle(&Joint[0].Rs_motor, &hcan1, ID, buf);
-		RobStrideRecv_Handle(&Joint[1].Rs_motor, &hcan1, ID, buf);
-//		}
+	  	uint8_t buf[8];
+		  uint32_t ID = CAN_Receive_DataFrame(&hcan1, buf);
+			RobStrideRecv_Handle(&Joint[2].Rs_motor, &hcan1, ID, buf);
+			RobStrideRecv_Handle(&Joint[3].Rs_motor, &hcan1, ID, buf);
+			RobStrideRecv_Handle(&Joint[4].Rs_motor, &hcan1, ID, buf);
 	}
 }
 
@@ -162,9 +297,9 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
 //		{
 //			uint32_t ID = (rx_header.IDE == CAN_ID_STD) ? rx_header.StdId : rx_header.ExtId;
 //			//IR_OnCanRx(&rx_header, buf);
-	  	RobStrideRecv_Handle(&Joint[2].Rs_motor, &hcan2, ID, buf);
-			RobStrideRecv_Handle(&Joint[3].Rs_motor, &hcan2, ID, buf);
-			RobStrideRecv_Handle(&Joint[4].Rs_motor, &hcan2, ID, buf);
+		
+		RobStrideRecv_Handle(&Joint[0].Rs_motor, &hcan2, ID, buf);
+		RobStrideRecv_Handle(&Joint[1].Rs_motor, &hcan2, ID, buf);
 		//}
 	}
 }
