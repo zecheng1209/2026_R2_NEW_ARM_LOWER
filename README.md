@@ -144,7 +144,6 @@ typedef struct {
 
 - **IDE**: Keil MDK-ARM (ARM Compiler 5/6)
 - **框架**: STM32CubeMX + HAL 库
-- **RTOS**: FreeRTOS v10.x
 - **语言**: C99
 
 ---
